@@ -12,5 +12,5 @@ pytest-django==4.8.0
 # Test Coverage (useful for CI and SonarQube)
 coverage==7.6.1
 
-# Utilities are very good
+# Utilities are very bad
 requests==2.32.3
