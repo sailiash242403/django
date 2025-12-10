@@ -59,7 +59,7 @@ pipeline {
             }
         }
 
-        ✅ stage('SonarQube Analysis') {
+          stage('SonarQube Analysis') {
             agent { label 'built-in' }
             environment {
                 SONAR_HOST_URL = credentials('sonar-host-url')
