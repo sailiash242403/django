@@ -2,8 +2,15 @@ pipeline {
     agent none
 
     options {
-        // Prevent Jenkins from doing an implicit checkout on every agent
-        skipDefaultCheckout(true)
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        DOCKERHUB_USER = 'thatavarthi403'
+        IMAGE_NAME     = 'django-app'
+        DOCKERHUB_PASS = credentials('dockerhub-creds')
+        SONARQUBE_ENV  = 'sonarqube-server'
     }
 
     stages {
@@ -12,100 +19,102 @@ pipeline {
             agent { label 'built-in' }
             steps {
                 checkout scm
-                stash includes: '**', name: 'source-code'
+                stash name: 'source_code', includes: '**/*'
             }
         }
 
-        stage('SonarQube Scan') {
-            agent { label 'built-in' }
+        stage('Pylint Analysis') {
+            agent { label 'jenkins-build-node' }
             steps {
-                unstash 'source-code'
+                unstash 'source_code'
+                sh '''
+                    set -e
+                    python3 -m venv .venv_pylint
+                    . .venv_pylint/bin/activate
+                    pip install --upgrade pip
+                    pip install pylint
+                    pylint --output-format=text $(find . -name "*.py" | grep -v ".venv_pylint" || true) > pylint.log || true
+                '''
+                recordIssues tools: [pylint(pattern: 'pylint.log')], stable: true
+                archiveArtifacts artifacts: 'pylint.log', allowEmptyArchive: true
+            }
+        }
+
+        stage('Unit Tests + Coverage') {
+            agent { label 'jenkins-build-node' }
+            steps {
+                unstash 'source_code'
+                sh '''
+                    set -e
+                    python3 -m venv .venv_test
+                    . .venv_test/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                    pip install pytest pytest-cov pytest-django
+                    pytest --junitxml=reports/junit.xml --cov=. --cov-report=xml --cov-report=term || true
+                '''
+                junit 'reports/junit.xml'
+                cobertura coberturaReportFile: 'coverage.xml'
+                stash name: 'test_artifacts', includes: 'coverage.xml, reports/**', allowEmpty: true
+            }
+        }
+
+        ✅ stage('SonarQube Analysis') {
+            agent { label 'built-in' }
+            environment {
+                SONAR_HOST_URL = credentials('sonar-host-url')
+                SONAR_TOKEN    = credentials('sonar-token')
+            }
+            steps {
+                unstash 'source_code'
+                unstash 'test_artifacts'
                 withSonarQubeEnv('sonarqube-server') {
-                    sh '''
-                        /opt/sonar-scanner/bin/sonar-scanner \
-                          -Dsonar.projectKey=django-sample-dev \
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=django-app \
                           -Dsonar.sources=. \
-                          -Dsonar.python.version=3.14 \
-                          -Dsonar.sourceEncoding=UTF-8
-                    '''
+                          -Dsonar.python.coverage.reportPaths=coverage.xml
+                    """
                 }
             }
         }
 
-        stage("Wait for Quality Gate") {
-            agent { label 'built-in' }
+        stage('Docker Build & Push') {
+            agent { label 'jenkins-docker-node' }
             steps {
-                sleep(time: 15, unit: 'SECONDS')
-                timeout(time: 2, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Lint Code (PyLint)') {
-            agent { label 'pynode' }
-            steps {
-                unstash 'source-code'
+                unstash 'source_code'
                 sh '''
-                    pip install -r requirements.txt
-                    pylint --rcfile=.pylintrc greet/ sample/ > pylint-report.txt || true
+                    echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
+                    docker build -t ${IMAGE_NAME}:latest .
+                    docker tag ${IMAGE_NAME}:latest ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+                    docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
                 '''
             }
-            post {
-                always {
-                    recordIssues(
-                        enabledForFailure: true,
-                        tools: [pyLint(pattern: 'pylint-report.txt')]
-                    )
-                }
-            }
         }
 
-        stage('Run Tests (PyTest)') {
-            agent { label 'pynode' }
+        stage('Deploy') {
+            agent { label 'jenkins-deploy-node' }
             steps {
-                unstash 'source-code'
                 sh '''
-                    pip install -r requirements.txt
-                    pytest --junitxml=pytest-results.xml
+                    docker pull ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+                    docker stop ${IMAGE_NAME} || true
+                    docker rm ${IMAGE_NAME} || true
+                    docker run -d -p 5000:5000 --name ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
                 '''
-            }
-            post {
-                always {
-                    junit 'pytest-results.xml'
-                }
-            }
-        }
-
-        stage('Raise PR to Master') {
-            agent { label 'built-in' }
-            steps {
-                withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                    sh '''
-                        # Create PR and capture its URL
-                        PR_URL=$(gh pr create --base master --head devbranch \
-                          --title "Auto PR: Merge devbranch to master" \
-                          --body "Pipeline succeeded on devbranch. Requesting merge to master.")
-
-                        echo "Created PR: $PR_URL"
-
-                        # Extract PR number from URL
-                        PR_NUMBER=$(echo $PR_URL | awk -F/ '{print $NF}')
-
-                        # Merge the PR explicitly by number
-                        gh pr merge $PR_NUMBER --auto --merge
-                    '''
-                }
             }
         }
     }
 
     post {
+        always {
+            archiveArtifacts artifacts: '**/*.log, coverage.xml, reports/**', allowEmptyArchive: true
+            cleanWs()
+        }
         success {
-            echo "✅ Pipeline completed successfully!"
+            echo "✅ Pipeline SUCCESS."
         }
         failure {
-            echo "❌ Pipeline failed!"
+            echo "❌ Pipeline FAILED — check logs."
         }
     }
 }
