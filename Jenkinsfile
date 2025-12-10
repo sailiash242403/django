@@ -80,7 +80,7 @@ pipeline {
         }
 
         stage('Docker Build & Push') {
-            agent { label 'jenkins-docker-node' }
+            agent { label 'jenkins-build-node' }
             steps {
                 unstash 'source_code'
                 sh '''
