@@ -5,6 +5,12 @@ pipeline {
         skipDefaultCheckout(true)
     }
 
+    environment {
+        DOCKERHUB_USER = 'thatavarthi403'
+        IMAGE_NAME     = 'django-app'
+        DOCKERHUB_PASS = credentials('dockerhub-creds')
+    }
+
     stages {
 
         stage('Checkout Code') {
@@ -105,6 +111,44 @@ pipeline {
                         gh pr merge $PR_NUMBER --auto --merge
                     '''
                 }
+            }
+        }
+
+         /**************************************************************
+         * Stage: Docker Build & Push
+         * Purpose: Build Docker image for the Flask app and push it 
+         *          to DockerHub with latest tag.
+         **************************************************************/
+        stage('Docker Build & Push') {
+            agent { label 'jenkins-build-node' }
+            steps {
+                unstash 'source_code'
+
+                sh '''
+                    echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
+
+                    docker build -t ${IMAGE_NAME}:latest .
+                    docker tag ${IMAGE_NAME}:latest ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+                    docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+                '''
+            }
+        }
+
+        /**************************************************************
+         * Stage: Deploy
+         * Purpose: Pull the latest Docker image on the deployment server 
+         *          and restart the running container.
+         **************************************************************/
+        stage('Deploy') {
+            agent { label 'jenkins-deploy-node' }
+            steps {
+                sh '''
+                    docker pull ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+                    docker stop ${IMAGE_NAME} || true
+                    docker rm ${IMAGE_NAME} || true
+
+                    docker run -d -p 5000:5000 --name ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+                '''
             }
         }
     }
