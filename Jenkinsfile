@@ -128,7 +128,7 @@ pipeline {
                         gh pr merge "$PR_NUMBER" --auto --merge
                         set -e || true
 
-                        echo "PR stage completed successfully."
+                        echo "PR stage completed successfully....."
                     '''
                 }
             }
