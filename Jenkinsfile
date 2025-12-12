@@ -83,7 +83,7 @@ pipeline {
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
                         # Create PR and capture its URL
-                        PR_URL=$(gh pr create --base master --head devbranch \
+                        PR_URL=$(gh pr create --base main --head dev-sailiash \
                           --title "Auto PR: Merge devbranch to master" \
                           --body "Pipeline succeeded on devbranch. Requesting merge to master.")
 
