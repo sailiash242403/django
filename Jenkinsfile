@@ -81,7 +81,10 @@ pipeline {
         stage('Raise PR to Main') {
             agent { label 'jenkins-build-node' }
             steps {
-                unstash 'source-code'
+                # unstash 'source-code'
+                // You MUST checkout to restore .git
+                checkout scm
+                
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
                         set -e
