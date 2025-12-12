@@ -84,7 +84,14 @@ pipeline {
                 unstash 'source-code'
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
-                        echo "$GITHUB_TOKEN" | gh auth login --with-token
+                        set -e
+
+                        # Authenticate GitHub CLI (quiet mode to avoid exit code 1)
+                        echo "$GITHUB_TOKEN" | gh auth login \
+                            --with-token \
+                            --hostname github.com \
+                            --git-protocol https \
+                            >/dev/null
                         
                         PR_URL=$(gh pr create --base main --head dev-sailiash \
                           --title "Auto PR: Merge devbranch to main" \
