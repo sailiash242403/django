@@ -79,13 +79,16 @@ pipeline {
         }
 
         stage('Raise PR to Main') {
-            agent { label 'built-in' }
+            agent { label 'jenkins-build-node' }
             steps {
+                unstash 'source-code'
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
+                        gh auth login --with-token <<< "$GITHUB_TOKEN"
+                        
                         PR_URL=$(gh pr create --base main --head dev-sailiash \
-                          --title "Auto PR: Merge devbranch to master" \
-                          --body "Pipeline succeeded on devbranch. Requesting merge to master.")
+                          --title "Auto PR: Merge devbranch to main" \
+                          --body "Pipeline succeeded on devbranch. Requesting merge to main.")
 
                         echo "Created PR: $PR_URL"
 
