@@ -46,20 +46,16 @@ pipeline {
             steps {
                 unstash 'source-code'
                 sh '''
-                    # Install requirements in venv
-                    /venv/bin/pip install -r requirements.txt
-
-                    # Run Pylint inside the venv
-                    /venv/bin/pylint --rcfile=.pylintrc greet/ sample/ > pylint-report.txt || true
+                    . /venv/bin/activate
+                    pip install -r requirements.txt
+                    pylint --rcfile=.pylintrc greet/ sample/ > pylint-report.txt || true
                 '''
             }
             post {
                 always {
                     recordIssues(
                         enabledForFailure: true,
-                        tools: [
-                            pylint(pattern: 'pylint-report.txt')
-                        ]
+                        tools: [pyLint(pattern: 'pylint-report.txt')]
                     )
                 }
             }
@@ -70,11 +66,9 @@ pipeline {
             steps {
                 unstash 'source-code'
                 sh '''
-                    # Install requirements in venv
-                    /venv/bin/pip install -r requirements.txt
-
-                    # Run tests inside venv
-                    /venv/bin/pytest --junitxml=pytest-results.xml
+                    . /venv/bin/activate
+                    pip install -r requirements.txt
+                    pytest --junitxml=pytest-results.xml
                 '''
             }
             post {
@@ -89,17 +83,14 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
-                        # Create PR and capture its URL
                         PR_URL=$(gh pr create --base main --head dev-sailiash \
                           --title "Auto PR: Merge devbranch to master" \
                           --body "Pipeline succeeded on devbranch. Requesting merge to master.")
 
                         echo "Created PR: $PR_URL"
 
-                        # Extract PR number from URL
                         PR_NUMBER=$(echo $PR_URL | awk -F/ '{print $NF}')
 
-                        # Auto-merge PR
                         gh pr merge $PR_NUMBER --auto --merge
                     '''
                 }
