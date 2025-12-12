@@ -2,7 +2,6 @@ pipeline {
     agent none
 
     options {
-        // Prevent Jenkins from doing an implicit checkout on every agent
         skipDefaultCheckout(true)
     }
 
@@ -47,6 +46,7 @@ pipeline {
             steps {
                 unstash 'source-code'
                 sh '''
+                    . /venv/bin/activate
                     pip install -r requirements.txt
                     pylint --rcfile=.pylintrc greet/ sample/ > pylint-report.txt || true
                 '''
@@ -66,6 +66,7 @@ pipeline {
             steps {
                 unstash 'source-code'
                 sh '''
+                    . /venv/bin/activate
                     pip install -r requirements.txt
                     pytest --junitxml=pytest-results.xml
                 '''
@@ -78,21 +79,29 @@ pipeline {
         }
 
         stage('Raise PR to Main') {
-            agent { label 'built-in' }
+            agent { label 'jenkins-build-node' }
             steps {
+                // unstash 'source-code'
+                // You MUST checkout to restore .git
+                checkout scm
+
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
-                        # Create PR and capture its URL
-                        PR_URL=$(gh pr create --base master --head devbranch \
-                          --title "Auto PR: Merge devbranch to master" \
-                          --body "Pipeline succeeded on devbranch. Requesting merge to master.")
+                        set -e
+
+                        # Tell GitHub CLI to use the token from env
+                        export GH_TOKEN="$GITHUB_TOKEN"
+                        export GITHUB_TOKEN="$GITHUB_TOKEN"
+                        echo "Authenticated with GH CLI."
+                        
+                        PR_URL=$(gh pr create --base main --head dev_sailiash \
+                          --title "Auto PR: Merge devbranch to main" \
+                          --body "Pipeline succeeded on devbranch. Requesting merge to main.")
 
                         echo "Created PR: $PR_URL"
 
-                        # Extract PR number from URL
                         PR_NUMBER=$(echo $PR_URL | awk -F/ '{print $NF}')
 
-                        # Merge the PR explicitly by number
                         gh pr merge $PR_NUMBER --auto --merge
                     '''
                 }
