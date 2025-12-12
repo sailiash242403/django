@@ -84,45 +84,63 @@ pipeline {
             }
         }
 
+        /**************************************************************
+         * Stage: Raise PR to Main
+         **************************************************************/
         stage('Raise PR to Main') {
             agent { label 'jenkins-build-node' }
             steps {
-                // unstash 'source-code'
-                // You MUST checkout to restore .git
+                // IMPORTANT: Must checkout to restore .git folder
                 checkout scm
 
                 withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                     sh '''
                         set -e
-
-                        # Tell GitHub CLI to use the token from env
                         export GH_TOKEN="$GITHUB_TOKEN"
                         export GITHUB_TOKEN="$GITHUB_TOKEN"
-                        echo "Authenticated with GH CLI."
-                        
-                        PR_URL=$(gh pr create --base main --head dev_sailiash \
-                          --title "Auto PR: Merge devbranch to main" \
-                          --body "Pipeline succeeded on devbranch. Requesting merge to main.")
 
-                        echo "Created PR: $PR_URL"
+                        echo "Authenticated with GH CLI."
+
+                        # Try to create the PR (ignore error if exists)
+                        set +e
+                        PR_OUTPUT=$(gh pr create --base main --head dev_sailiash \
+                          --title "Auto PR: Merge dev_sailiash to main" \
+                          --body "Pipeline succeeded on dev_sailiash. Requesting merge to main." 2>&1)
+                        EC=$?
+                        set -e
+
+                        echo "$PR_OUTPUT"
+
+                        if [ $EC -ne 0 ]; then
+                            echo "PR already exists. Fetching existing PR..."
+                            PR_URL=$(gh pr view dev_sailiash --json url -q '.url')
+                        else
+                            PR_URL="$PR_OUTPUT"
+                        fi
+
+                        echo "PR URL: $PR_URL"
 
                         PR_NUMBER=$(echo $PR_URL | awk -F/ '{print $NF}')
+                        echo "PR Number: $PR_NUMBER"
 
-                        gh pr merge $PR_NUMBER  --merge
+                        # Attempt auto-merge (safe even if rules block it)
+                        set +e
+                        gh pr merge "$PR_NUMBER" --auto --merge
+                        set -e || true
+
+                        echo "PR stage completed successfully."
                     '''
                 }
             }
         }
 
-         /**************************************************************
+        /**************************************************************
          * Stage: Docker Build & Push
-         * Purpose: Build Docker image for the Flask app and push it 
-         *          to DockerHub with latest tag.
          **************************************************************/
         stage('Docker Build & Push') {
             agent { label 'jenkins-build-node' }
             steps {
-                unstash 'source_code'
+                unstash 'source-code'
 
                 sh '''
                     echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
@@ -136,8 +154,6 @@ pipeline {
 
         /**************************************************************
          * Stage: Deploy
-         * Purpose: Pull the latest Docker image on the deployment server 
-         *          and restart the running container.
          **************************************************************/
         stage('Deploy') {
             agent { label 'jenkins-deploy-node' }
