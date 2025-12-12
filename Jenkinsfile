@@ -108,7 +108,7 @@ pipeline {
 
                         PR_NUMBER=$(echo $PR_URL | awk -F/ '{print $NF}')
 
-                        gh pr merge $PR_NUMBER --auto --merge
+                        gh pr merge $PR_NUMBER  --merge
                     '''
                 }
             }
