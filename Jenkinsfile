@@ -94,7 +94,7 @@ pipeline {
                         export GITHUB_TOKEN="$GITHUB_TOKEN"
                         echo "Authenticated with GH CLI."
                         
-                        PR_URL=$(gh pr create --base main --head dev-sailiash \
+                        PR_URL=$(gh pr create --base main --head dev_sailiash \
                           --title "Auto PR: Merge devbranch to main" \
                           --body "Pipeline succeeded on devbranch. Requesting merge to main.")
 
