@@ -86,12 +86,10 @@ pipeline {
                     sh '''
                         set -e
 
-                        # Authenticate GitHub CLI (quiet mode to avoid exit code 1)
-                        echo "$GITHUB_TOKEN" | gh auth login \
-                            --with-token \
-                            --hostname github.com \
-                            --git-protocol https \
-                            >/dev/null
+                        # Tell GitHub CLI to use the token from env
+                        export GH_TOKEN="$GITHUB_TOKEN"
+                        export GITHUB_TOKEN="$GITHUB_TOKEN"
+                        echo "Authenticated with GH CLI."
                         
                         PR_URL=$(gh pr create --base main --head dev-sailiash \
                           --title "Auto PR: Merge devbranch to main" \
