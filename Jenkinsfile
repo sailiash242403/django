@@ -84,9 +84,9 @@ pipeline {
             }
         }
 
-        /**************************************************************
+        /*****************************************************************
          * Stage: Raise PR to Main
-         **************************************************************/
+         *****************************************************************/
         stage('Raise PR to Main') {
             agent { label 'jenkins-build-node' }
             steps {
@@ -134,40 +134,7 @@ pipeline {
             }
         }
 
-        /**************************************************************
-         * Stage: Docker Build & Push
-         **************************************************************/
-        stage('Docker Build & Push') {
-            agent { label 'jenkins-build-node' }
-            steps {
-                unstash 'source-code'
-
-                sh '''
-                    echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
-
-                    docker build -t ${IMAGE_NAME}:latest .
-                    docker tag ${IMAGE_NAME}:latest ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
-                    docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
-                '''
-            }
-        }
-
-        /**************************************************************
-         * Stage: Deploy
-         **************************************************************/
-        stage('Deploy') {
-            agent { label 'jenkins-deploy-node' }
-            steps {
-                sh '''
-                    docker pull ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
-                    docker stop ${IMAGE_NAME} || true
-                    docker rm ${IMAGE_NAME} || true
-
-                    docker run -d -p 5000:5000 --name ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
-                '''
-            }
-        }
-    }
+}
 
     post {
         success {
